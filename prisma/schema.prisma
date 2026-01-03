@@ -10,7 +10,7 @@ generator client {
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider = "sqlite"
-  url      = "file:dev.sqlite"
+  url      = "file:./dev.sqlite"
 }
 
 model Session {
@@ -31,4 +31,13 @@ model Session {
   emailVerified Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+}
+
+model InventorySetting {
+  id Int @id @default(autoincrement())
+  shop String
+  productId String
+  variantId String
+  minStock Int @default(1)
+  updatedAt DateTime @updatedAt
 }
