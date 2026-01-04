@@ -15,6 +15,7 @@ export const loader = async ({request} : LoaderFunctionArgs) => {
                     node {
                         id
                         title
+                        status
                         variants(first: 5) {
                             edges {
                                 node {
@@ -49,7 +50,11 @@ export default function InventoryManager() {
 
     const variants = products.flatMap((productEdge: any) => {
         const product = productEdge.node;
-        return product.variants.edges.map((variantEdge: any) => ({...variantEdge.node, productTitle: product.title}));
+        return product.variants.edges.map((variantEdge: any) => ({...variantEdge.node, productTitle: product.title, productStatus: product.status}));
+    });
+
+    variants.sort((x, y) => {
+        return x.productStatus !== y.productStatus ? x.productStatus.localeCompare(y.productStatus) : x.productTitle.localeCompare(y.productTitle);
     });
 
     const {selectedResources, allResourcesSelected, handleSelectionChange} = useIndexResourceState(variants);
@@ -71,6 +76,7 @@ export default function InventoryManager() {
                 </IndexTable.Cell>
                 <IndexTable.Cell>{variant.title}</IndexTable.Cell>
                 <IndexTable.Cell>{variant.inventoryQuantity}</IndexTable.Cell>
+                <IndexTable.Cell> {variant.productStatus} </IndexTable.Cell>
                 </IndexTable.Row>
             );
         });
@@ -83,7 +89,7 @@ export default function InventoryManager() {
                      <Card>
                         <IndexTable 
                             itemCount={rows.length} 
-                            headings={[{title: 'Product'}, {title: 'Variant'}, {title: 'Inventory Quantity'}]}
+                            headings={[{title: 'Product'}, {title: 'Variant'}, {title: 'Inventory Quantity'}, {title: 'Status'}]}
                             onSelectionChange={handleSelectionChange}
                             selectedItemsCount={
                                 allResourcesSelected ? 'All' : selectedResources.length
