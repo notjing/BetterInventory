@@ -1,7 +1,7 @@
 import prisma from "app/db.server"
 import { authenticate } from "app/shopify.server"
 import { LoaderFunctionArgs, useLoaderData } from "react-router"
-import {Layout, Page, Card, IndexTable, Text} from "@shopify/polaris"
+import {Layout, Page, Card, IndexTable, Text, useIndexResourceState} from "@shopify/polaris"
 import { AppProvider } from "@shopify/shopify-app-react-router/react"
 
 
@@ -46,43 +46,55 @@ export const loader = async ({request} : LoaderFunctionArgs) => {
 export default function InventoryManager() {
     const {products, settings} = useLoaderData()
 
-    const rows = products.flatMap((productEdge: any, index: number) => {
-    const product = productEdge.node;
-    
-    return product.variants.edges.map((variantEdge: any, vIndex: number) => {
-      const variant = variantEdge.node;
-      // Unique ID for the row key
-      const rowId = variant.id; 
 
-      // 2. MUST use Polaris components, not <tr> or <td>
-      return (
-        <IndexTable.Row 
-            id={rowId} 
-            key={rowId} 
-            position={index}
-        >
-          <IndexTable.Cell>
-            <Text fontWeight="bold" as="span">{product.title}</Text>
-          </IndexTable.Cell>
-          <IndexTable.Cell>{variant.title}</IndexTable.Cell>
-          <IndexTable.Cell>{variant.inventoryQuantity}</IndexTable.Cell>
-        </IndexTable.Row>
-      );
+    const variants = products.flatMap((productEdge: any) => {
+        const product = productEdge.node;
+        return product.variants.edges.map((variantEdge: any) => ({...variantEdge.node, productTitle: product.title}));
     });
-  });
+
+    const {selectedResources, allResourcesSelected, handleSelectionChange} = useIndexResourceState(variants);
+
+
+    const rows =  variants.map((variantNode: any, vIndex: number) => {
+        const variant = variantNode;
+        const rowId = variant.id; 
+
+            return (
+                <IndexTable.Row 
+                    id={rowId} 
+                    key={rowId} 
+                    position={vIndex}
+                    selected={selectedResources.includes(rowId)}
+                >
+                <IndexTable.Cell>
+                    <Text fontWeight="bold" as="span">{variant.productTitle}</Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>{variant.title}</IndexTable.Cell>
+                <IndexTable.Cell>{variant.inventoryQuantity}</IndexTable.Cell>
+                </IndexTable.Row>
+            );
+        });
+    
 
     return (
         <Page>
             <Layout>
                 <Layout.Section>
-                    <Card>
-                        <IndexTable itemCount={rows.length} headings={[{title: 'Product'}, {title: 'Variant'}, {title: 'Inventory Quantity'}]}>
-
+                     <Card>
+                        <IndexTable 
+                            itemCount={rows.length} 
+                            headings={[{title: 'Product'}, {title: 'Variant'}, {title: 'Inventory Quantity'}]}
+                            onSelectionChange={handleSelectionChange}
+                            selectedItemsCount={
+                                allResourcesSelected ? 'All' : selectedResources.length
+                            }
+                        >
+                            {rows}
                         </IndexTable>
-                    </Card>
-                </Layout.Section>  
+                     </Card>
+                </Layout.Section>
             </Layout>
-        </Page>
+        </Page>       
     )
 
 }
