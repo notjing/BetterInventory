@@ -1,10 +1,13 @@
 import prisma from "app/db.server"
 import { authenticate } from "app/shopify.server"
 import { LoaderFunctionArgs, useLoaderData } from "react-router"
-import {Layout, Page, Card, IndexTable, Text, useIndexResourceState, Badge, BlockStack, InlineGrid} from "@shopify/polaris"
+import {Layout, Page, Card, IndexTable, Text, useIndexResourceState, Badge, BlockStack, InlineGrid, Icon, Frame, Modal} from "@shopify/polaris"
 import { AppProvider } from "@shopify/shopify-app-react-router/react"
 import { Product } from "@shopify/app-bridge-react"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
+import {SettingsIcon} from '@shopify/polaris-icons';
+import VariantSettingModal from "app/components/VariantSettingModal"
+
 
 export const loader = async ({request} : LoaderFunctionArgs) => {
     const {admin, session} = await authenticate.admin(request)
@@ -34,6 +37,8 @@ export const loader = async ({request} : LoaderFunctionArgs) => {
 
     const responseJson = await response.json()
 
+    await ensureInventorySettings(session.shop, responseJson.data.products.edges)
+
     const settings = await prisma.inventorySetting.findMany({
         where: {shop: session.shop },
     })
@@ -45,38 +50,77 @@ export const loader = async ({request} : LoaderFunctionArgs) => {
 
 }
 
-interface ProductVariant {
-  id: string;
-  title: string;
-  inventoryQuantity: number;
-  productTitle: string;
-  productStatus: string;
+async function ensureInventorySettings(shop: string, products: any[]) {
+    const allVariants = products.flatMap((productEdge: any) => {
+        const product = productEdge.node;
+        return product.variants.edges.map((variantEdge: any) => ({
+            productId: product.id,
+            variantId: variantEdge.node.id
+        }));
+    });
+
+    for (const variant of allVariants) {
+        await prisma.inventorySetting.upsert({
+            where: {
+                shop_variantId: {
+                    shop: shop,
+                    variantId: variant.variantId
+                }
+            },
+            update: {}, 
+            create: {
+                shop: shop,
+                productId: variant.productId,
+                variantId: variant.variantId,
+                minStock: 5
+            }
+        })
+    }
+}
+
+export interface ProductVariant {
+    id: string;
+    title: string;
+    inventoryQuantity: number;
+    productTitle: string;
+    productStatus: string;
+    minStockThreshold: number | null;
 }
 
 export default function InventoryManager() {
     const {products, settings} = useLoaderData()
 
+    const [settingsModalActive, setSettingsModalActive] = useState(false);
+    const [variantSelected, setVariantSelected] = useState(null as ProductVariant | null);
+
+
+    function settingsClickHandler(e: React.MouseEvent, variant: ProductVariant) {
+        e.stopPropagation(); 
+        setSettingsModalActive(true);
+        setVariantSelected(variant);
+    }
 
     const variants = products.flatMap((productEdge: any) => {
         const product = productEdge.node;
-        return product.variants.edges.map((variantEdge: any) => ({...variantEdge.node, productTitle: product.title, productStatus: product.status}));
+        return product.variants.edges.map((variantEdge: any) => {
+
+            const variant = variantEdge.node;
+
+            const variantSetting = settings.find((s: any) => s.variantId === variant.id);
+
+            return {...variantEdge.node, productTitle: product.title, productStatus: product.status, minStockThreshold: variantSetting ? variantSetting.minStockThreshold : null  };
+        });
     });
 
     variants.sort((x : ProductVariant, y: ProductVariant) => {    
         return x.productStatus !== y.productStatus ? x.productStatus.localeCompare(y.productStatus) : x.productTitle.localeCompare(y.productTitle);
     });
 
-    const lowStock = variants.filter((variant: ProductVariant) => variant.inventoryQuantity < 5);
+    const lowStock = variants.filter((variant: ProductVariant) => variant.inventoryQuantity < (variant.minStockThreshold? variant.minStockThreshold : 5));
     const outOfStock = variants.filter((v: ProductVariant) => v.inventoryQuantity === 0).length;
 
 
     const {selectedResources, allResourcesSelected, handleSelectionChange} = useIndexResourceState(variants);
-
-    useEffect(() => {
-        console.log(settings);
-    });
-
-    const lowStockThreshold = 5;
 
     const rows =  variants.map((variantNode: any, vIndex: number) => {
         const variant = variantNode;
@@ -96,19 +140,30 @@ export default function InventoryManager() {
                 <IndexTable.Cell>
                     <Text 
                         as="span"
-                        tone={variant.inventoryQuantity === 0 ? 'critical' : variant.inventoryQuantity < 5 ? 'caution' : 'success'}
-                        fontWeight={variant.inventoryQuantity === 0 ? 'bold' : variant.inventoryQuantity < 5 ? 'semibold' : 'regular'}
+                        tone={variant.inventoryQuantity === 0 ? 'critical' : variant.inventoryQuantity < (variant.minStockThreshold? variant.minStockThreshold : 5) ? 'caution' : 'success'}
+                        fontWeight={variant.inventoryQuantity === 0 ? 'bold' : variant.inventoryQuantity < (variant.minStockThreshold? variant.minStockThreshold : 5) ? 'semibold' : 'regular'}
                     >
                         {variant.inventoryQuantity}
                     </Text>
                 </IndexTable.Cell>
-                    <IndexTable.Cell>
-                        <Badge
-                            tone={variant.productStatus === 'ACTIVE' ? 'success' : variant.productStatus === 'DRAFT' ? 'attention' : 'warning'}
-                        >        
-                            {variant.productStatus}
-                        </Badge>
-                     </IndexTable.Cell>
+                <IndexTable.Cell>
+                    <Badge
+                        tone={variant.productStatus === 'ACTIVE' ? 'success' : variant.productStatus === 'DRAFT' ? 'attention' : 'warning'}
+                    >        
+                        {variant.productStatus}
+                    </Badge>
+                </IndexTable.Cell>
+                
+                <IndexTable.Cell>
+                    <span 
+                        onMouseEnter={(e) => e.currentTarget.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))'}
+                        onMouseLeave={(e) => e.currentTarget.style.filter = 'none'}
+                        onClick={(e) => {settingsClickHandler(e, variant)}}
+                        style={{display: 'flex', transform: 'scale(1.5)', justifyContent: 'center', alignItems: 'center', transition: 'filter 0.2s ease'}}>
+                        <Icon source={SettingsIcon}/>
+                    </span>
+                </IndexTable.Cell>
+                
                 </IndexTable.Row>
             );
     });
@@ -136,9 +191,6 @@ export default function InventoryManager() {
                             <Text as="p" variant="heading2xl" tone="caution">
                                 {lowStock.length}
                             </Text>
-                            <Text as="p" variant="bodySm" tone="subdued">
-                                {lowStockThreshold} or fewer units
-                            </Text>
                         </BlockStack>
                     </Card>
                     
@@ -149,9 +201,6 @@ export default function InventoryManager() {
                             </Text>
                             <Text as="p" variant="heading2xl" tone="critical">
                                 {outOfStock}
-                            </Text>
-                            <Text as="p" variant="bodySm" tone="subdued">
-                                Requires immediate attention
                             </Text>
                         </BlockStack>
                     </Card>
@@ -165,7 +214,8 @@ export default function InventoryManager() {
                             {title: 'Product'}, 
                             {title: 'Variant'}, 
                             {title: 'Inventory Quantity'}, 
-                            {title: 'Status'}
+                            {title: 'Status'},
+                            {title: ""}
                         ]}
                         onSelectionChange={handleSelectionChange}
                         selectedItemsCount={
@@ -176,6 +226,8 @@ export default function InventoryManager() {
                     </IndexTable>
                 </Card>
             </BlockStack>
+
+            {settingsModalActive && <VariantSettingModal modalOpen={settingsModalActive} variant={variantSelected} onClose={() => setSettingsModalActive(false)} />} 
         </Page>    
     )
 
