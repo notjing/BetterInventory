@@ -38,7 +38,7 @@ model InventorySetting {
   shop String
   productId String
   variantId String
-  minStock Int @default(5)
+  minStock Int @default(0)
   updatedAt DateTime @updatedAt
 
   @@unique([shop, variantId], name: "shop_variantId")

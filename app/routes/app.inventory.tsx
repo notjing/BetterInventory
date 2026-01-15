@@ -1,6 +1,6 @@
 import prisma from "app/db.server"
 import { authenticate } from "app/shopify.server"
-import { LoaderFunctionArgs, useLoaderData } from "react-router"
+import { LoaderFunctionArgs, useLoaderData, ActionFunctionArgs } from "react-router"
 import {Layout, Page, Card, IndexTable, Text, useIndexResourceState, Badge, BlockStack, InlineGrid, Icon, Frame, Modal} from "@shopify/polaris"
 import { AppProvider } from "@shopify/shopify-app-react-router/react"
 import { Product } from "@shopify/app-bridge-react"
@@ -78,6 +78,28 @@ async function ensureInventorySettings(shop: string, products: any[]) {
     }
 }
 
+export const action = async ({request}: ActionFunctionArgs) => {
+    const {session} = await authenticate.admin(request);
+    const formData = await request.formData();
+    
+    const variantId = formData.get("variantId") as string;
+    const minStock = parseInt(formData.get("minStock") as string);
+    
+    await prisma.inventorySetting.update({
+        where: {
+            shop_variantId: {
+                shop: session.shop,
+                variantId: variantId
+            }
+        },
+        data: {
+            minStock: minStock
+        }
+    });
+    
+    return JSON.stringify({ success: true });
+};
+
 export interface ProductVariant {
     id: string;
     title: string;
@@ -108,7 +130,7 @@ export default function InventoryManager() {
 
             const variantSetting = settings.find((s: any) => s.variantId === variant.id);
 
-            return {...variantEdge.node, productTitle: product.title, productStatus: product.status, minStockThreshold: variantSetting ? variantSetting.minStockThreshold : null  };
+            return {...variantEdge.node, productTitle: product.title, productStatus: product.status, minStockThreshold: variantSetting ? variantSetting.minStock : null  };
         });
     });
 

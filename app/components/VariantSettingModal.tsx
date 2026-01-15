@@ -1,5 +1,7 @@
-import { Modal } from "@shopify/polaris";
+import { Modal, Form, FormLayout, TextField, Button } from "@shopify/polaris";
 import { ProductVariant } from "app/routes/app.inventory";
+import { useEffect, useState } from "react";
+import { useFetcher } from "react-router";
 
 interface VariantSettingModalProps {
     modalOpen: boolean;
@@ -9,6 +11,32 @@ interface VariantSettingModalProps {
 
 export default function VariantSettingModal({modalOpen, variant, onClose}: VariantSettingModalProps) {
 
+    const [threshold, setThreshold] = useState(variant?.minStockThreshold? variant.minStockThreshold : 0);
+    const fetcher = useFetcher();
+
+    useEffect(() => {
+        if (modalOpen && variant) {
+            setThreshold(variant.minStockThreshold ?? 0);
+        }
+    }, [modalOpen, variant]);
+
+
+    const handleChange = (value: string) => {
+        setThreshold(parseInt(value));
+    };
+
+    const handleSubmit = () => {
+        fetcher.submit(
+            {
+                variantId: variant!.id,
+                minStock: threshold.toString()
+            },
+            { method: "post" }
+        );
+        
+        onClose();
+    };
+
     return (
         <Modal 
             open={modalOpen} 
@@ -17,7 +45,21 @@ export default function VariantSettingModal({modalOpen, variant, onClose}: Varia
             >
 
             <Modal.Section>
-                Variant settings for {variant?.title} content goes here.
+                <Form onSubmit={handleSubmit}>
+                    <FormLayout>
+                        <TextField
+                            label="Low Inventory Threshold"
+                            type="number"
+                            value = {threshold.toString()}
+                            onChange={handleChange}
+                            autoComplete="off"
+                        >
+
+                        </TextField>
+                        <Button submit={true}>Save</Button>
+
+                    </FormLayout>
+                </Form>
             </Modal.Section>
         </Modal>
     )
