@@ -7,6 +7,7 @@ import { Product } from "@shopify/app-bridge-react"
 import { useEffect, useState } from "react"
 import {SettingsIcon} from '@shopify/polaris-icons';
 import VariantSettingModal from "app/components/VariantSettingModal"
+import { IndexTableSortDirection } from "@shopify/polaris/build/ts/src/components/IndexTable"
 
 
 export const loader = async ({request} : LoaderFunctionArgs) => {
@@ -115,6 +116,8 @@ export default function InventoryManager() {
     const [settingsModalActive, setSettingsModalActive] = useState(false);
     const [variantSelected, setVariantSelected] = useState(null as ProductVariant | null);
 
+    const [sortedColumn, setSortedColumn] = useState("Status");
+    const [sortDirection, setSortDirection] = useState<IndexTableSortDirection>("descending");
 
     function settingsClickHandler(e: React.MouseEvent, variant: ProductVariant) {
         e.stopPropagation(); 
@@ -134,9 +137,33 @@ export default function InventoryManager() {
         });
     });
 
-    variants.sort((x : ProductVariant, y: ProductVariant) => {    
-        return x.productStatus !== y.productStatus ? x.productStatus.localeCompare(y.productStatus) : x.productTitle.localeCompare(y.productTitle);
+    const sortedVariants = variants.sort((x : ProductVariant, y: ProductVariant) => {
+        switch (sortedColumn) {
+            case "Product":
+                return sortDirection === "ascending"
+                    ? x.productTitle.localeCompare(y.productTitle)
+                    : y.productTitle.localeCompare(x.productTitle);
+            case "Variant":
+                return sortDirection === "ascending"
+                    ? x.title.localeCompare(y.title)
+                    : y.title.localeCompare(x.title);
+            case "Inventory Quantity":
+                return sortDirection === "ascending"
+                    ? x.inventoryQuantity - y.inventoryQuantity
+                    : y.inventoryQuantity - x.inventoryQuantity;
+            case "Status":
+                return sortDirection === "ascending"
+                    ? x.productStatus.localeCompare(y.productStatus)
+                    : y.productStatus.localeCompare(x.productStatus);
+        }
     });
+
+    const handleSort = (columnIdx: number, direction: IndexTableSortDirection) => {
+        const columnMap = ['Product', 'Variant', 'Inventory Quantity', 'Status'];
+        setSortDirection(direction);
+        setSortedColumn(columnMap[columnIdx]);
+    }
+    
 
     const lowStock = variants.filter((variant: ProductVariant) => variant.inventoryQuantity < (variant.minStockThreshold? variant.minStockThreshold : 5));
     const outOfStock = variants.filter((v: ProductVariant) => v.inventoryQuantity === 0).length;
@@ -144,7 +171,7 @@ export default function InventoryManager() {
 
     const {selectedResources, allResourcesSelected, handleSelectionChange} = useIndexResourceState(variants);
 
-    const rows =  variants.map((variantNode: any, vIndex: number) => {
+    const rows =  sortedVariants.map((variantNode: any, vIndex: number) => {
         const variant = variantNode;
         const rowId = variant.id; 
 
@@ -230,6 +257,7 @@ export default function InventoryManager() {
 
                 <Card padding="0">
                     <IndexTable 
+                        sortable={[true,true,true,true,false]}
                         itemCount={rows.length}
                         resourceName={{singular: 'variant', plural: 'variants'}}
                         headings={[
@@ -237,9 +265,12 @@ export default function InventoryManager() {
                             {title: 'Variant'}, 
                             {title: 'Inventory Quantity'}, 
                             {title: 'Status'},
-                            {title: ""}
+                            {title: "Settings"}
                         ]}
+                        onSort={handleSort}
                         onSelectionChange={handleSelectionChange}
+                        sortDirection={sortDirection}
+                        sortColumnIndex={['Product', 'Variant', 'Inventory Quantity', 'Status'].indexOf(sortedColumn)}
                         selectedItemsCount={
                             allResourcesSelected ? 'All' : selectedResources.length
                         }
